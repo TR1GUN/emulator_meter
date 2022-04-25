@@ -23,7 +23,8 @@ class SetupMeter:
                  # Данные которые нужно протащить в счетчик
                  data=None,
                  # Серийный номер счетчика - НУЖНО ЧТОБ НЕ ПОТЕРЯТЬСЯ
-                 serial=None):
+                 serial=None
+                 ):
 
         # Задаем Порт
         self.serv_port = None
@@ -84,7 +85,7 @@ class SetupMeter:
 
             except socket.timeout:
                 # print('режим блокировки', self.client_socket.getblocking())
-
+                print("Отвалились по таймауту")
                 break
 
             except Exception as e:
@@ -106,8 +107,8 @@ class SetupMeter:
                                   proto=0)
         serv_sock.bind(('', self.port))
 
-        serv_sock.settimeout(20.0)
-
+        # serv_sock.settimeout(20.0)
+        print(serv_sock.getsockname())
         serv_sock.listen()
 
         return serv_sock
@@ -143,20 +144,23 @@ class SetupMeter:
         session = True
         while session:
             request = self.__read_request()
-            # print('Команда', request)
+            print('Команда', request)
             if request is None:
                 # print(f'Client #{self.cid} unexpectedly disconnected')
-                # print('Пришла пустота')
+                print('Пришла пустота')
                 session = False
 
             # Если у нас есть команда конец передачи
             elif self.SimulatorMeter.close in request:
-                # print('Конец передачи')
+                print('Конец передачи')
                 session = False
 
             else:
                 # Формируем ответ
+                print('Формируем ответ')
+
                 response = self.__handle_request(request)
+                print('Команда', response)
                 self.__write_response(response)
 
     # Читаем запрос
@@ -180,7 +184,7 @@ class SetupMeter:
             # итак что делаем - считываем Первый Пакет с сокета
             request = self.client_socket.recv(1024)
             # ЕСЛИ У НАС В ПАКЕТЕ 1
-            # - 2 БАЙТА - это неообходимость для первого влючения
+            # - 2 БАЙТА - это неообходимость для первого включения
             if len(request) == 2:
                 while True:
 
@@ -210,10 +214,11 @@ class SetupMeter:
             if not request:
                 # print(' От клиента не пришло никакой информации.')
                 request = None
-
+            # Когда сессия появилась - выставляем заново таймаут
+            self._SET_TIMEOUT(1.5)
             # Логируем
-            # print('------------------------------- ЧИТАЕМ ДАННЫЕ -----------------------------------')
-            # self.log(chunk=request, type_packet=' Полученный ')
+            print('------------------------------- ЧИТАЕМ ДАННЫЕ -----------------------------------')
+            self.log(chunk=request, type_packet=' Полученный ')
 
             # Возвращаем
             return request
@@ -255,7 +260,7 @@ class SetupMeter:
         #
 
         self.client_socket.sendall(response)
-        time.sleep(1)
+        # time.sleep(1)
 
     # -----------------------------------------------
     def _SET_TIMEOUT(self, timeout):
@@ -303,7 +308,7 @@ class SetupMeter:
 
 # --------------->
 #
-# СТАРАЯ ВЕРСИЯ
+# # СТАРАЯ ВЕРСИЯ
 # class SocketMeters:
 #     """
 #     Здесь инициализируем сокет нашего эмулятора счетчика чтоб обращаться к нему по Ethernet
@@ -315,10 +320,10 @@ class SetupMeter:
 #
 #     def __init__(self, conect_port, data=None, serial=None):
 #
-#         # Создаем файл лога
-#         self.log_file = write_file.write_log_file(
-#             file_name='EmulatorMeter_' + str(time.mktime(datetime.datetime.now().timetuple())) + str('.txt'),
-#             writen_text='ЛОГ обмена :', folder='Meter/')
+#         # # Создаем файл лога
+#         # self.log_file = write_file.write_log_file(
+#         #     file_name='EmulatorMeter_' + str(time.mktime(datetime.datetime.now().timetuple())) + str('.txt'),
+#         #     writen_text='ЛОГ обмена :', folder='Meter/')
 #         # Задаем Порт
 #         self.serv_port = None
 #         self.port = conect_port
@@ -470,7 +475,6 @@ class SetupMeter:
 #             else:
 #                 break
 #
-#
 #     def _SET_TIMEOUT(self, timeout):
 #         """
 #         Здесь устанавливаем таймаут на сокет
@@ -603,6 +607,7 @@ class SetupMeter:
 #         writen_text = '---------------------------------------------------------\n' + \
 #                       str(datetime.datetime.now()) + '\n' + \
 #                       print1 + print2 + print3 + print4
-#
-#         write_file.append_write_log_file(file_name=self.log_file, writen_text=writen_text)
+
+        # write_file.append_write_log_file(file_name=self.log_file, writen_text=writen_text)
 SetupMeter(5555)
+# SocketMeters(5555)
