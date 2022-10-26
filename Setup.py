@@ -1,10 +1,7 @@
 # Здесь основной файл запуска
 
 
-
-
-
-class VirtualMeterManager:
+class VirtualMeter:
     """
     Основной класс Менеджер нашего виртуального счетчика
     """
@@ -15,9 +12,10 @@ class VirtualMeterManager:
     _TCP = None
     # COM Порт
     _COM = None
-    def __init__(self,  Setup_config:[None, dict] = None,
-                        Meter_config:[None, dict] = None,
-                        Meter_values:[None, dict] = None
+
+    def __init__(self, Setup_config: [None, dict] = None,
+                 Meter_config: [None, dict] = None,
+                 Meter_values: [None, dict] = None
                  ):
         """
         При Объявлении класса нам необходимо:
@@ -28,15 +26,21 @@ class VirtualMeterManager:
         Если что-то из этого не задано - То печаль
         """
 
-
     def _Create_Meter(self, Meter_config, Meter_values):
         """
         Здесь создаем объект нашего Virtual Meter - Виртуального счетчика
         """
+        from Meter import SimulatorMeterEnergomera
+        self._Virtual_Meter = SimulatorMeterEnergomera(Meter_config=Meter_config, Meter_values=Meter_values)
 
-        self._Virtual_Meter =
+    def _Create_TCP(self, Setup_config):
+        """
+        Здесь создаем
+        :param Setup_config:
+        :return:
+        """
+
 class Setup:
-
     port = 5555
 
     def __init__(self, port=5555):
@@ -49,6 +53,4 @@ class Setup:
         server = SocketMeters(self.port)
 
 
-
 lol = Setup()
-

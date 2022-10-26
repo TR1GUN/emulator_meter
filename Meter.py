@@ -7,28 +7,8 @@ import time
 import os
 from xml.dom import minidom
 import json
-from DataBase_SimulatorMeter import Meter_DataBase
 
-# # Для начала пропишем наш файл со значениями
-# path = '/'.join((os.path.abspath(__file__).replace('\\', '/')).split('/')[:-1])
 times = 1
-
-# # Получаем файл с параметрами
-# valuesbank = xmltree.parse(path + '/values.xml').getroot()
-# path_db = path
-
-#
-# def parse_values():
-#     """Итак у нас есть функция чтения значений - Это важно"""
-#     # Сначала читаем наш JSON
-#     try:
-#         jsonfile = open(path + '/values.json')
-#         json_text = jsonfile.read()
-#         valuesbank = json.loads(json_text)
-#     except:
-#         valuesbank = xmltree.parse(path + '/values.xml').getroot()
-#
-#     return valuesbank
 
 
 # Набор скоростей
@@ -87,36 +67,50 @@ class SimulatorMeterEnergomera:
     _lf = b'\n'
     # Набор данных
     _data = b'\x06\x06\x06'
-
+    # Данные команды энергомеры
     _dataargs = b''
-
+    # Дополнительные аргументы команды
     _readen_args = b''
-
+    # Дополнительные команды - конец команды
     _lbrace = b''
-
+    # Дополнительные команды - конец строки
     _rbrace = b''
+    # Стартовый байт команды
+    _start = b''
 
+    #
+    _exclam = b''
+    # Тип запроса
     _c = b''
+    # Дополнительный параметр запроса
+    _d = b''
+    # Параметр запроса - Используется в авторизации
+    _v = b''
+    # Параметр запроса - Используется в авторизации
+    _z = b''
+    # Параметр запроса - Используется в авторизации
+    _y = b''
+    #
+    _eot = b''
+
+    # Контрольная сумма
+    _bcc = b''
+
     # Завершение обмена - Команда конца передачи
     _close = b'\x01B0\x03u'
 
     # ------ Поля необходимые для формирования ответа ------
     # Тип полученной команды
     _type = None
-    # Генерируемый ответ
-    _answer = b''
-    # Запрос
-    _response = bytearray()
 
-    # Ответ на вопрос
-    _response_answer = None
+    # Запрос
+    _response = b''
 
     # -----
     # Команда запроса
-    _request = b''
+    _request = bytearray()
 
     # Список типов ответов во время сессии обмена
-
     _answerbank = \
         {
             # Приветствие
@@ -210,7 +204,7 @@ class SimulatorMeterEnergomera:
             # Временой промежуток между ответами
             'respondtimeout': "500",
 
-            # ---
+            # --- Конфигурация счетчика
             "const": 1.0,
             # "kI": 0.99,
             # "kU": 0.99,
@@ -237,7 +231,8 @@ class SimulatorMeterEnergomera:
     _serial = None
     # Модель счетчика
     _model = ''
-
+    # адрес прибора учета
+    _address = b''
     # Значения данных измерений счетчиков
     valuesbank = \
         {
@@ -252,6 +247,7 @@ class SimulatorMeterEnergomera:
         """
 
         # Определяем наш словарь который содержит значения данных
+
         self.valuesbank = \
             {
                 "const": 1.0,
@@ -287,18 +283,30 @@ class SimulatorMeterEnergomera:
 
             }
 
-        # Модель - перезаполняем поле
-        self.model = str(self.Config.get("model_code"))
         # Служебные настройки - хз для чего
         self.times = 1
-        self.datecheck = int(self.Config.get("datecheckmode"))
-        self.respondtimeout = int(self.Config.get("respondtimeout")) * 0.001
         self.datecheckcount = 1
 
         # ------------------------------------
         # Теперь загружаем внутрение показатели счетчика -
+
+
         # Сначала Получаем дату
         self.time_now = datetime.now()
+
+
+        # ТЕПЕРЬ ГОТОВЫ К РАБОТЕ
+
+    # -------------------------------ОСНОВНАЯ КОМАНДА РАБОТЫ С ВИРТУАЛЬНЫМ СЧЕТЧИКОМ------------------------------------
+    def command(self, command):
+        """
+        Основной метод работы со счетчиком.
+        Отправляем команду - Получаем на нее ответ.
+
+        :param command: - байтовая строка - Сюда пихаем команду на которую надо получить ответ
+
+        :return: И получаем наш ответ
+        """
 
         # Переопределяем переменные основных команд
         self._start = b''
@@ -311,134 +319,101 @@ class SimulatorMeterEnergomera:
         self._z = b''
         self._y = b''
         self._eot = b''
-        # Инициализируем наш адрес
-        self._counter_address = self.Config.get("address").encode()
 
-        # ТЕПЕРЬ ГОТОВЫ К РАБОТЕ :
-        # self._response = request
-        # # Запускаем -
-        # self.response_answer = self.__parse_request()
-        # после того как дали ответ - записываем дату ответа
-        self.record_timenow()
-
-    # -------------------------------ОСНОВНАЯ КОМАНДА РАБОТЫ С ВИРТУАЛЬНЫМ СЧЕТЧИКОМ------------------------------------
-    def command(self, command):
-        """
-        Основной метод работы со счетчиком.
-        Отправляем команду - Получаем на нее ответ.
-
-        :param command: - байтовая строка - Сюда пихаем команду на которую надо получить ответ
-
-        :return: И получаем наш ответ
-        """
         # Получаем команду
         self._request = command
 
-        # self._response = command
         # Запускаем -
-        self.response_answer = self.__parse_request()
-        # после того как дали ответ - записываем дату ответа
-        # self.record_timenow()
+        # Берем нашу команду, что получили
 
-        return self.response_answer
+        # Сначала пытаемся прочитать начальный байт
+        try:
+
+            self._start = struct.pack('b', self._request[0])
+
+        # если он содержит ошибку - то говорим об этом
+        except Exception as e:
+            print('ERROR -' + str(e), self._request[0])
+            self._start = struct.pack('b', 1)
+
+        # После пытаемся найти команду по начальному байту
+        try:
+            # self._parse_comand(start_byte=self._start)
+            self.cmdbank.get(self._start)(self)
+
+        except Exception as e:
+            print(e)
+            # Итак - если у нас лажанула команда - то отправляем команду НЕ ПОНЕЛ
+            print('*************************НЕ ПРАВИЛЬНАЯ КОМАНДА*************************\n ',
+                  '*************************** ПЕРЕЗАПРАШИВАЕМ ***************************')
+            self._type = 'CMD'
+            self._answerbank['CMD'] = self._nak
+
+        # Делаем ответ:
+        # Определяем тип команд
+        # response = self.__makeanswer(self._type)
+        self._response = self._answerbank[self._type]
+
+        return self._response
 
     # ---------------------------------------------УСТАНОВКА СЕРИЙНИКА------------------------------------------------
     def Set_Serial(self, serial):
         """
-        Этот метод используется , для того чтоб задать серийный номер счетчика
+        Метод используется, для того чтоб задать серийный номер счетчика
         :param serial:
         :return:
         """
-        self.serial = serial
+        self._serial = serial
 
-    # ---------------------------------------------УСТАНОВКА СЕРИЙНИКА------------------------------------------------
-    def Set_Data(self, data):
+    # -----------------------------------  УСТАНОВКА Параметров Конфигурации -----------------------------------------
+    def Set_Meter_Config(self, Meter_config: [dict]):
         """
-        Этот метод используется для того чтоб задать данные в формате JSON что записываем
-        :param data:
+        Добавление данных конфигурации прибора учета
+        :param Meter_config: - dict - Конфигурация счетчика
         :return:
         """
-        vals = data.get('vals')
+        if type(Meter_config) is dict:
+            self.Config.update(Meter_config)
+            # Модель - перезаполняем поле
+            self._model = str(self.Config.get("model_code"))
 
-        # Проверяем валидацию json
-        try:
-            element = vals[0]["tags"][0]["tag"]
+            self.datecheck = int(self.Config.get("datecheckmode"))
+            self.respondtimeout = int(self.Config.get("respondtimeout")) * 0.001
 
-            # ТЕПЕРЬ НАДО ПОНЯТЬ МЫ ПОЛУЧИЛИ ЖУРНАЛЫ ИЛИ НЕТ
-            if element in ['event', 'eventId', 'journalId']:
-                # если получили журналы , то записываем их в буффер журналов
-                self.__adding_journal_values(vals)
-            # иначе - опускаем в перезапись по таймштапам
-            else:
-                self.__adding_values_from_json(vals)
-        except:
-            print('***ERROR : ВАЛИДАЦИЯ JSON НЕУСПЕШНА***')
+            # Инициализируем наш адрес
+            self._address = str(self.Config.get("address")).encode()
 
-    # -------------------------------СЛУЖЕБНЫЕ КОМАНДЫ РАБОТЫ С ВИРТУАЛЬНЫМ СЧЕТЧИКОМ----------------------------------
-    #
-    # # Функция загрузки параметров из values.xml
-    # def __load_parametrs_from_xml(self):
-    #     """
-    #     В Этом методе загружаем параметры в наш valuesbank из xml - Даныный метод - обязательный
-    #
-    #     :return:
-    #     """
-    #     # Парсим файл
-    #     valuesbank = xmltree.parse(path + '/values.xml').getroot()
-    #     # Берем словарь
-    #     valuesbank_dict = {}
-    #     # Загружаем сначала таймштамп -
-    #     # Он идет обычным словарем
-    #     valuesbank_dict.update(valuesbank.attrib)
-    #     # Теперь проходимся по каждому элементу
-    #     for child in valuesbank:
-    #         valuesbank_dict[child.attrib['code']] = child.text
-    #
-    #     # Теперь изменяем таймштамп на текущий системный
-    #     valuesbank_dict['time'] = self.time_now
-    #     # СОХРАНЯЕМ ЭТО ПО КЛЮЧУ - Now
-    #     self.valuesbank['NOW'] = valuesbank_dict
+            self._serial = self.Config.get("snumber")
 
-    # # Функция Парсинга джейсон и заполнение данных поверх нашей xml
-    # def __parse_JSON(self):
-    #     """
-    #     Функция Парсинга джейсон и заполнение данных поверх нашей xml
-    #
-    #     :return:
-    #     """
-    #     try:
-    #         jsonfile = open(path + '/values.json')
-    #         json_text = jsonfile.read()
-    #         import json
-    #         primary_valuesbank = json.loads(json_text)
-    #     except:
-    #         print('Не удалось прочитать JSON, используются значения по умолчанию')
-    #         primary_valuesbank = None
-    #
-    #     # Если он не пустой , то переформатируем до нужного вида
-    #     if primary_valuesbank is not None:
-    #         vals = primary_valuesbank.get('vals')
-    #
-    #         # Проверяем валидацию json
-    #         try:
-    #             element = vals[0]["tags"][0]["tag"]
-    #
-    #             # ТЕПЕРЬ НАДО ПОНЯТЬ МЫ ПОЛУЧИЛИ ЖУРНАЛЫ ИЛИ НЕТ
-    #             if element in ['event', 'eventId', 'journalId']:
-    #                 # если получили журналы , то записываем их в буффер журналов
-    #                 self.__adding_journal_values(vals)
-    #             # иначе - опускаем в перезапись по таймштапам
-    #             else:
-    #                 self.__adding_values_from_json(vals)
-    #         except:
-    #             print('***ERROR : ВАЛИДАЦИЯ JSON НЕУСПЕШНА***')
-    #
-    #     # else:
-    #     #     self.values_dict_with_timestamp = {datetime.now(): None}
+    # ------------------------------------  УСТАНОВКА Необходимых параметров   ---------------------------------------
+    def Set_Meter_Data(self, Meter_values: [dict]):
+        """
+        Этот метод используется, для того чтоб задать данные в формате JSON что записываем
+
+        :param Meter_values:
+        :return:
+        """
+
+        if type(Meter_values) is dict:
+            vals = Meter_values.get('vals')
+
+            # Проверяем валидацию json
+            try:
+                element = vals[0]["tags"][0]["tag"]
+
+                # ТЕПЕРЬ НАДО ПОНЯТЬ МЫ ПОЛУЧИЛИ ЖУРНАЛЫ ИЛИ НЕТ
+                if element in ['event', 'eventId', 'journalId']:
+                    # если получили журналы, то записываем их в буффер журналов
+                    self.__adding_journal_values(vals)
+                # иначе - опускаем в перезапись по таймштапам
+                else:
+                    self.__adding_values_from_json(vals)
+            except:
+                print('***ERROR : ВАЛИДАЦИЯ JSON НЕУСПЕШНА***')
 
     def __adding_values_from_json(self, vals):
         """
-        Добавление значений из JSON  в наш банк значений
+        Добавление значений из JSON в наш банк значений
 
         :return:
         """
@@ -602,75 +577,41 @@ class SimulatorMeterEnergomera:
     # --------------------------------------------------------------------------------------------------------------
     # ------------------------------ ОСНОВНАЯ ЛОГИКА РАБОТЫ ВИРТУАЛЬНОГО СЧЕТЧИКА ----------------------------------
     # --------------------------------------------------------------------------------------------------------------
-    # разобрать запрос и сгенерировать ответ
-    def __parse_request(self):
-        """
-        Метод для чтения запроса и отдачи ответа
 
-        :return: Ответ - байтовая строка
-        """
-
-        # Берем нашу команду, что получили
-        request = self._request
-
-        # Делаем начало ответа
-        try:
-
-            self.start = struct.pack('b', self._request[0])
-
-        except Exception as e:
-            print('ERROR -' + str(e), self._request[0])
-
-            self.start = struct.pack('b', 1)
-
-        try:
-            self._parse_comand(command=self.start)
-
-        except:
-
-            # Итак - если у нас лажанула команда - то отправляем команду НЕ ПОНЕЛ
-            print('*************************НЕ ПРАВИЛЬНАЯ КОМАНДА*************************\n ',
-                  '*************************** ПЕРЕЗАПРАШИВАЕМ ***************************')
-            self.type = 'CMD'
-            self.answerbank['CMD'] = self.nak
-
-        # Делаем ответ:
-        # Определяем тип команд
-        response = self.__makeanswer(self.type)
-
-        return response
-
-    # Делаем ответ
-    def __makeanswer(self, anstype):
-        """
-        МЕТОД ДЛЯ ТОГО ЧТОБ СДЕЛАТЬ ОТВЕТ НА ЗАПРОС
-
-        :param anstype:
-        :return:
-        """
-        # ПО ТИПУ ЗАПРОСА ОПРЕДЕЛЯЕМ ОТВЕТ ЧЕРЕЗ СЛОВАРЬ ОТВЕТОВ
-        self._answer = self.answerbank[anstype]
-
-        return self.answer
+    # # Делаем ответ
+    # def __makeanswer(self, anstype):
+    #     """
+    #     МЕТОД ДЛЯ ТОГО ЧТОБ СДЕЛАТЬ ОТВЕТ НА ЗАПРОС
+    #
+    #     :param anstype:
+    #     :return:
+    #     """
+    #     # ПО ТИПУ ЗАПРОСА ОПРЕДЕЛЯЕМ ОТВЕТ ЧЕРЕЗ СЛОВАРЬ ОТВЕТОВ
+    #     self._answer = self._answerbank[anstype]
+    #
+    #     return self._answer
 
     # --------------------------------------------------------------------------------------------------------------
     # ------------------------------------------- Рабочие методы ---------------------------------------------------
     # --------------------------------------------------------------------------------------------------------------
     #     Служебный метод парсинга команды
-    def _parse_comand(self, command):
-        """
-        ЗДЕСЬ - ОПРЕДЕЛЯЕМ ПО ЗАГОЛОВКУ ТИП КОМАНДЫ _ И СООТВЕТСВЕННО ПИХАЕМ В НУЖНЫЙ РАЗДЕЛ
-        :param command:
-        :return:
-        """
-        if b'/' in command:
-            self.__reqhello()
-        elif self._ack in command:
-            self.__confirm()
-        elif self._soh in command:
-            self.__prog()
-        else:
-            self.__empty()
+    # def _parse_comand(self, start_byte):
+    #     """
+    #     ЗДЕСЬ - ОПРЕДЕЛЯЕМ ПО ЗАГОЛОВКУ ТИП КОМАНДЫ _ И СООТВЕТСВЕННО ПИХАЕМ В НУЖНЫЙ РАЗДЕЛ
+    #     :param command:
+    #     :return:
+    #     """
+    #
+    #     # self.cmdbank.get(start_byte)(self)
+    #
+    #     # if b'/' in command:
+    #     #     self.__reqhello()
+    #     # elif self._ack in command:
+    #     #     self.__confirm()
+    #     # elif self._soh in command:
+    #     #     self.__prog()
+    #     # else:
+    #     #     self.__empty()
 
     # -------------------------------------------------------------------------------------------------
     # ----------------------------    Обработка Различных Типов Команд     ----------------------------
@@ -684,9 +625,7 @@ class SimulatorMeterEnergomera:
         """
         self._type = 'None'
 
-        # # Возвращаем - команду НЕ понял
-        # answer = self._nak
-        # return answer
+        self._answerbank['None'] = b''
 
     # тип ответа "ПРИВЕТ"
     def __reqhello(self):
@@ -697,19 +636,19 @@ class SimulatorMeterEnergomera:
         """
 
         # разбираем ответ на "Привет"
-        if len(self._response) > 1 and struct.pack('b', self._response[1]) == b'?':
+        if len(self._request) > 1 and struct.pack('b', self._request[1]) == b'?':
             # Стартовый символ
-            self._start += struct.pack('b', self._response[1])
+            self._start += struct.pack('b', self._request[1])
 
             # Определяем тип операции как приветствие
             self._type = 'hello'
 
-            if struct.pack('b', self._response[4]) == '!'.encode():
-                self._address = bytes(self._response[2:4])
-                self._exclam = struct.pack('b', self._response[4])
+            if struct.pack('b', self._request[4]) == '!'.encode():
+                self._address = bytes(self._request[2:4])
+                self._exclam = struct.pack('b', self._request[4])
             else:
-                self._address = bytes(self._response[2:5])
-                self._exclam = struct.pack('b', self._response[5])
+                self._address = bytes(self._request[2:5])
+                self._exclam = struct.pack('b', self._request[5])
             self._cr = struct.pack('b', 13)
             self._lf = struct.pack('b', 10)
 
@@ -722,7 +661,7 @@ class SimulatorMeterEnergomera:
             # self.answerbank['hello'] = bytes(b'/EKT5' + name + version + self.cr + self.lf)
 
             # Создаем ответ
-            self._answer = bytes(b'/EKT5' + name + version + self._cr + self._lf)
+            self._answerbank['hello'] = bytes(b'/EKT5' + name + version + self._cr + self._lf)
 
     # данный метод нужен для обмена информаций после привет
     def __confirm(self):
@@ -736,33 +675,32 @@ class SimulatorMeterEnergomera:
 
         # Читаем запрос:
 
-        self._v = struct.pack('b', self._response[1])
+        self._v = struct.pack('b', self._request[1])
 
-        self._z = struct.pack('b', self._response[2])
+        self._z = struct.pack('b', self._request[2])
 
-        self._y = struct.pack('b', self._response[3])
+        self._y = struct.pack('b', self._request[3])
 
-        self._cr = struct.pack('b', self._response[len(self._response) - 2])
+        self._cr = struct.pack('b', self._request[len(self._request) - 2])
 
-        self._lf = struct.pack('b', self._response[len(self._response) - 1])
+        self._lf = struct.pack('b', self._request[len(self._request) - 1])
 
         # self._cr = struct.pack('b', 13)
         #
         # self._lf = struct.pack('b', 10)
 
         # Делаем ответ на запрос программирования
-        name = self.Config.get("name", "").encode()
-
+        # адрес
+        address = str(self.Config.get("address", "")).encode()
 
         self._answerbank['confirm'] = \
             bytes(
-                  self._soh + b'P0' + self._stx + b'(' + self._counter_address + b')' + self._etx +
-                  calcbcc(b'P0' + self._stx + b'(' + self._counter_address + b')' + self._etx)
+                self._soh + b'P0' + self._stx + b'(' + address + b')' + self._etx +
+                calcbcc(b'P0' + self._stx + b'(' + address + b')' + self._etx)
             )
 
     # создать ответ на запросы авторизации и данных
     def __prog(self):
-
         """
         Данный метод нужен для составления нормального ответа после того как перешли в режим программирования -
         Здесь используется Сценарий обмена тип С -
@@ -772,9 +710,9 @@ class SimulatorMeterEnergomera:
         :return:
         """
         # Если у нас пришла не пустота
-        if self._response[1] is not None:
+        if self._request[1] is not None:
             # Читаем запрос
-            self._c = struct.pack('b', self._response[1])
+            self._c = struct.pack('b', self._request[1])
 
             # Блок авторизации
             if self._c == b'P':
@@ -799,15 +737,15 @@ class SimulatorMeterEnergomera:
                 # Определяем тип операции как команда
                 self._type = 'CMD'
                 # индикатор типа команды - здесь он int
-                self._d = struct.pack('b', self._response[2])
+                self._d = struct.pack('b', self._request[2])
                 # self.answer = b''
                 self._answerbank['CMD'] = b''
-            # self.etx = struct.pack('b', self._response[len(self._response) - 2])
+            # self.etx = struct.pack('b', self._request[len(self._request) - 2])
             self._etx = struct.pack('b', 3)
             # Пытаемся запаковать это
 
             try:
-                self._bcc = struct.pack('b', self._response[len(self._response) - 1])
+                self._bcc = struct.pack('b', self._request[len(self._request) - 1])
 
             # Если не получилось сразу, то запаковываем это альтернативно- ЭТО ОЧЕНЬ ВАЖНЫЙ МОМЕНТ
             #                   UPD
@@ -816,8 +754,10 @@ class SimulatorMeterEnergomera:
             # НЕТ, НЕ ТЕХ БИТ ЧТО В БАГАЖНИКЕ
             # ДА, В ШКОЛЕ УЧИЛИ ЧТО ИХ 8 как в денди
             # НО ЭТО НЕ ДЕНДИ А ЭНЕРГОМЕРА
-            except:
-                pack = self._response[len(self._response) - 1]
+            except Exception as e:
+
+                print(e)
+                pack = self._request[len(self._request) - 1]
                 # ПРИНУДИТЕЛЬНО ЗАПОКОВЫВАЕМ
                 bcc_byte = pack.to_bytes(8, byteorder='big', signed=True)
 
@@ -840,18 +780,17 @@ class SimulatorMeterEnergomera:
 
         # Читаем пришедшие данные:
         # индикатор типа команды - здесь он int
-        self._d = struct.pack('b', self._response[2])
+        self._d = struct.pack('b', self._request[2])
         # Объявление начала операции
-        self._stx = struct.pack('b', self._response[3])
+        self._stx = struct.pack('b', self._request[3])
         # Служебный байт ?
-        self._lbrace = struct.pack('b', self._response[4])
+        self._lbrace = struct.pack('b', self._request[4])
         # Сам наш пароль от Счетчика
-        self._data = self._response[5:len(self._response) - 3]
+        self._data = self._request[5:len(self._request) - 3]
 
         # Проверяем пароль
         password = self.Config.get("password").encode()
         if self._data != password:
-
             print("Пароль не совпал, лол")
             # print(u'Пароль не совпал пароль счетчика{0} и пароль УМ{1}'.format(str(
             #     self._counter.password, self.data)))
@@ -863,7 +802,7 @@ class SimulatorMeterEnergomera:
             # f.close
             # return
         # Делаем ответ
-        self._rbrace = struct.pack('b', self._response[len(self._response) - 3])
+        self._rbrace = struct.pack('b', self._request[len(self._request) - 3])
 
     def __meter_command(self):
         """
@@ -877,14 +816,14 @@ class SimulatorMeterEnergomera:
         tmp = self._stx
         # Читаем пришедшие данные:
         # индикатор типа команды - здесь он int
-        self._d = struct.pack('b', self._response[2])
+        self._d = struct.pack('b', self._request[2])
         # Объявление начала операции
-        self._stx = struct.pack('b', self._response[3])
+        self._stx = struct.pack('b', self._request[3])
 
         # Парсим всю команду в кодировке энергомеры - Нужна, чтоб вытащить время
-        self._comand_energomera_protocol = self._response[4:-2]
+        self._comand_energomera_protocol = self._request[4:-2]
         # Парсим просто команду, без скобок
-        self._data = bytes(self._response[4:9])
+        self._data = bytes(self._request[4:9])
         # получение данных в первый раз
         # Пытаемся по команде узнать что надо отвечать
         try:
@@ -899,11 +838,11 @@ class SimulatorMeterEnergomera:
             # ставим данные - пустоту
             self._dataargs = b''
         # Читаем конец команды
-        self._lbrace = struct.pack('b', self._response[9])
+        self._lbrace = struct.pack('b', self._request[9])
         # Читаем дополнительные аргументы
-        self._readen_args = bytes(self._response[10:len(self._response) - 3])
+        self._readen_args = bytes(self._request[10:len(self._request) - 3])
         # Читаем закрывающий символ
-        self._rbrace = struct.pack('b', self._response[len(self._response) - 3])
+        self._rbrace = struct.pack('b', self._request[len(self._request) - 3])
 
         # проверяем, нужно ли использовать дополнительные аргументы
         if len(self._readen_args) == 0:
@@ -1258,7 +1197,7 @@ class SimulatorMeterEnergomera:
     def __consrtuct_date_by_find(self, year: int = 0, month: int = 0, day: int = 0, hour: int = 0, minute: int = 0):
 
         """
-        Итак - очень важная хрень - конструктор нужной даты для последующего ее поиска- Это важно!!
+        Итак - очень важная вещь - конструктор нужной даты для последующего ее поиска- Это важно!!
         :return:
         """
         # ИТАК - ЕСЛИ ГОД , МЕСЯЦ , ЧИСЛО ИЛИ ЧТО ТО ИЗ ЭТОГО НЕ ЗАДАВАЛОСЬ ПО КАКОЙ ТО ПРИЧИНЕ - ПЕРЕОПРЕДЕЛЯЕМ НА
@@ -1537,10 +1476,10 @@ class SimulatorMeterEnergomera:
         times = 1
         # ЕСЛИ мы не спустили серийник сверху - то используем стоковый
 
-        if self.serial is None:
+        if self._serial is None:
             serial = str(self.Config.get("snumber")).encode()
         else:
-            serial = str(self.serial)
+            serial = str(self._serial)
             serial = serial.encode()
 
         return serial
@@ -1554,7 +1493,7 @@ class SimulatorMeterEnergomera:
         # Параметр котоырй парсится из настроек - Couters
         # Подробнее смотри протокол энергомеры - Команда MODEL
         # model =str(self._counter.model)
-        model = self.model
+        model = self._model
         return model.encode()
 
     # energy values - ПОКАЗАТЕЛИ ЭНЕРГИИ
@@ -1568,7 +1507,7 @@ class SimulatorMeterEnergomera:
             tag = str(self._tags.get(self._data)) + str(t - 1)
 
             query = 'Value[@code="' + tag + '"]'
-            var = str(valuesbank.find(query).text)
+            var = str(self.valuesbank.find(query).text)
         return var.encode()
 
     # частота
@@ -1597,7 +1536,7 @@ class SimulatorMeterEnergomera:
         else:
             tag = str(self._tags.get(self._data)) + str(t - 1)
             query = 'Value[@code="' + tag + '"]'
-            var = str(valuesbank.find(query).text)
+            var = str(self.valuesbank.find(query).text)
             return var.encode()
 
     # общие случайные значения для неподдерживаемых запросов и тегов
@@ -1750,28 +1689,14 @@ class SimulatorMeterEnergomera:
 
     # Запись в файл текущего времени - ЭТО ОЧЕНЬ ВАЖНО
 
-    def record_timenow(self):
-
-        # Теперь переводим все это в Unixtime
-        Unix_time = self.time_now.timestamp()
-        # Делаем словарь
-        timestamp_dict = {'time': int(Unix_time)}
-        # Переводим в JSON
-        timestamp_json = json.dumps(timestamp_dict)
-        # А После записываем
-        path_values = path + '/Counters/' + 'Meter_Timestamp.json'
-        a = open(path_values, 'w')
-        a.write(timestamp_json)
-        a.close()
-
     # Список типов команд
     cmdbank = {
         # Команда тип - Привет
         b'/': __reqhello,
         #  Команда тип - Сообщение
-        ack: __confirm,
+        _ack: __confirm,
         #  Команда тип - Обмен данными
-        soh: __prog
+        _soh: __prog
     }
     # Добавляем значение ключа пустота (Если ничего не спарсили) на неправильный запрос
     cmdbank.setdefault(None, __empty)
